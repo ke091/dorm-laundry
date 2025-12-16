@@ -2,171 +2,216 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ComfortLink</title>
+<title>기숙사 세탁기 시스템</title>
 
 <style>
-body {
-  font-family: system-ui, sans-serif;
-  margin: 0;
-  background: #f4f6f8;
-}
-header {
-  background: #2f6df6;
-  color: white;
-  padding: 16px;
-  text-align: center;
-  font-size: 20px;
-  font-weight: bold;
-}
-.container {
-  padding: 16px;
-}
-.machine {
-  background: white;
-  border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-button {
-  width: 100%;
-  padding: 14px;
-  font-size: 16px;
-  margin-top: 6px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-}
-.start { background: #2f6df6; color: white; }
-.request { background: #ef4444; color: white; }
-.done { background: #22c55e; color: white; }
-input {
-  width: 100%;
-  padding: 12px;
-  margin-top: 6px;
-  font-size: 16px;
-}
-.status {
-  font-weight: bold;
-  margin: 8px 0;
-}
+body{font-family:Arial;background:#f0f2f5;padding:20px}
+h1{text-align:center}
+h2{margin-top:25px}
+.dashboard{background:#fff;padding:15px;border-radius:10px;margin-bottom:20px}
+.machine{background:#fff;padding:15px;margin:10px 0;border-radius:10px}
+.available{border-left:8px solid #4caf50}
+.using{border-left:8px solid #ff9800}
+.finished{border-left:8px solid #f44336}
+button{margin:5px;padding:10px 14px;font-size:15px}
+small{color:#555}
 </style>
 </head>
 
 <body>
 
-<header>
-ComfortLink  
-<br><small>불편함을 연결로 해결하다</small>
-</header>
+<h1>🧺 기숙사 세탁기 / 건조기 시스템</h1>
+<div class="dashboard" id="dashboard"></div>
+<div id="app"></div>
 
-<div class="container">
-
-<div class="machine">
-  <h2>🧺 세탁기</h2>
-  <div class="status" id="washerStatus">불러오는 중...</div>
-  <div id="washerTime"></div>
-
-  <input id="washerRoom" placeholder="방 번호 (예: 203호)">
-  <input id="washerMin" placeholder="사용 시간 (분)">
-  <button class="start" onclick="start('washer')">사용 시작</button>
-  <button class="request" onclick="requestClean('washer')">정리 요청</button>
-  <button class="done" onclick="finish('washer')">정리 완료</button>
-</div>
-
-<div class="machine">
-  <h2>🔥 건조기</h2>
-  <div class="status" id="dryerStatus">불러오는 중...</div>
-  <div id="dryerTime"></div>
-
-  <input id="dryerRoom" placeholder="방 번호 (예: 203호)">
-  <input id="dryerMin" placeholder="사용 시간 (분)">
-  <button class="start" onclick="start('dryer')">사용 시작</button>
-  <button class="request" onclick="requestClean('dryer')">정리 요청</button>
-  <button class="done" onclick="finish('dryer')">정리 완료</button>
-</div>
-
-</div>
-
-<!-- 🔥 Firebase -->
 <script type="module">
+/* ================= Firebase ================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyALbv48xEDyGtdaNn8MCvF79bqDmEKjjf0",
   authDomain: "comfortlink-laundry.firebaseapp.com",
-  projectId: "comfortlink-laundry",
-  storageBucket: "comfortlink-laundry.firebasestorage.app",
-  messagingSenderId: "484193931044",
-  appId: "1:484193931044:web:fb528955ca8088950c6db1"
+  projectId: "comfortlink-laundry"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const appFB = initializeApp(firebaseConfig);
+const db = getFirestore(appFB);
+const machinesRef = doc(db, "shared", "machines");
+/* ============================================ */
 
-const washerRef = doc(db, "machines", "washer");
-const dryerRef = doc(db, "machines", "dryer");
-
-async function init() {
-  await setDoc(washerRef, { status: "idle" }, { merge: true });
-  await setDoc(dryerRef, { status: "idle" }, { merge: true });
+// ---------------- 사용자 방 번호 ----------------
+let myRoom = localStorage.getItem("room");
+if(!myRoom){
+  let input = prompt("방 번호 입력 (예: 203호)");
+  myRoom = input.replace(/[^0-9]/g,"");
+  localStorage.setItem("room", myRoom);
 }
-init();
 
-onSnapshot(washerRef, snap => render("washer", snap.data()));
-onSnapshot(dryerRef, snap => render("dryer", snap.data()));
+// ---------------- 기기 정보 ----------------
+let machines = [
+{id:1,floor:1,name:'세탁기 1'},
+{id:2,floor:1,name:'건조기 1'},
+{id:3,floor:2,name:'세탁기 1'},
+{id:4,floor:2,name:'세탁기 2'},
+{id:5,floor:2,name:'건조기 1'},
+{id:6,floor:2,name:'건조기 2'},
+{id:7,floor:3,name:'세탁기 1'},
+{id:8,floor:3,name:'세탁기 2'},
+{id:9,floor:3,name:'건조기 1'},
+{id:10,floor:3,name:'건조기 2'}
+];
 
-window.start = async (type) => {
-  const room = document.getElementById(type+"Room").value;
-  const min = parseInt(document.getElementById(type+"Min").value);
-  if (!room || !min) return alert("입력하세요");
+machines.forEach(m=>{
+  m.status="available";
+  m.room=null;
+  m.endTime=null;
+  m.reservations=[];
+  m.alert5=false;
+});
 
-  const ref = type === "washer" ? washerRef : dryerRef;
-  await updateDoc(ref, {
-    status: "using",
-    room,
-    end: Date.now() + min * 60000
+// ---------------- Firestore 초기화 ----------------
+await setDoc(machinesRef, { machines }, { merge:true });
+
+// ---------------- 실시간 수신 ----------------
+onSnapshot(machinesRef, snap=>{
+  if(snap.exists()){
+    machines = snap.data().machines;
+    render();
+  }
+});
+
+// ---------------- Firestore 저장 ----------------
+function save(){
+  updateDoc(machinesRef, { machines });
+}
+
+// ---------------- 공통 함수 ----------------
+function remain(m){
+  return Math.max(0, Math.ceil((m.endTime - Date.now()) / 60000));
+}
+
+// ---------------- 대시보드 ----------------
+function dashboard(){
+  let using = machines.find(m=>m.room==myRoom && m.status=="using");
+  let reserving = machines.find(m=>m.reservations.includes(myRoom));
+
+  document.getElementById("dashboard").innerHTML=`
+    <strong>내 방: ${myRoom}호</strong><br>
+    사용 중: ${using ? using.floor+'층 '+using.name+' ('+remain(using)+'분 남음)' : '없음'}<br>
+    예약: ${reserving ? reserving.floor+'층 '+reserving.name : '없음'}
+  `;
+}
+
+// ---------------- 화면 렌더 ----------------
+function render(){
+  dashboard();
+  const app=document.getElementById("app");
+  app.innerHTML="";
+
+  [1,2,3].forEach(floor=>{
+    app.innerHTML+=`<h2>${floor}층</h2>`;
+    machines.filter(m=>m.floor==floor).forEach(m=>{
+      let html=`<div class="machine ${m.status}"><strong>${m.name}</strong><br>`;
+
+      if(m.status=="available"){
+        html+=`🟢 사용 가능<br>
+        <button onclick="start(${m.id})">사용 시작</button>
+        <button onclick="reserve(${m.id})">예약</button>`;
+      }
+
+      if(m.status=="using"){
+        html+=`🟠 ${m.room}호 사용 중<br>
+        ⏰ ${remain(m)}분 남음<br>
+        <button onclick="reserve(${m.id})">예약</button>
+        ${m.room==myRoom ? `<button onclick="manualFinish(${m.id})">사용 종료</button>` : ''}`;
+
+        if(remain(m)<=5 && !m.alert5 && m.room==myRoom){
+          alert("⏰ 5분 남았습니다!");
+          m.alert5=true;
+        }
+        if(remain(m)==0) autoFinish(m);
+      }
+
+      if(m.status=="finished"){
+        html+=`🔴 사용 완료 (${m.room}호)<br>
+        <button onclick="clearMachine(${m.id})">정리 완료</button>
+        <button onclick="requestClean(${m.id})">정리 요청</button>`;
+      }
+
+      if(m.reservations.length>0){
+        html+=`<small>예약 대기: ${m.reservations.join(', ')}호</small>`;
+        if(m.reservations.includes(myRoom)){
+          html+=`<br><button onclick="cancelReserve(${m.id})">예약 취소</button>`;
+        }
+      }
+
+      html+=`</div>`;
+      app.innerHTML+=html;
+    });
   });
-};
+}
 
-window.requestClean = async (type) => {
-  const ref = type === "washer" ? washerRef : dryerRef;
-  await updateDoc(ref, { status: "request" });
-};
+// ---------------- 기능 함수 ----------------
+window.start = function(id){
+  let t = parseInt(prompt("사용 시간 (분)"));
+  if(!t) return;
 
-window.finish = async (type) => {
-  const ref = type === "washer" ? washerRef : dryerRef;
-  await updateDoc(ref, { status: "idle", room: "", end: null });
-};
+  let m=machines.find(x=>x.id==id);
+  m.status="using";
+  m.room=myRoom;
+  m.endTime=Date.now()+t*60000;
+  m.alert5=false;
+  save();
+}
 
-function render(type, data) {
-  if (!data) return;
-  const statusEl = document.getElementById(type+"Status");
-  const timeEl = document.getElementById(type+"Time");
-
-  if (data.status === "idle") {
-    statusEl.innerText = "사용 가능";
-    timeEl.innerText = "";
-  }
-
-  if (data.status === "using") {
-    statusEl.innerText = `${data.room} 사용 중`;
-    const left = Math.max(0, Math.floor((data.end - Date.now())/60000));
-    timeEl.innerText = `남은 시간: ${left}분`;
-  }
-
-  if (data.status === "request") {
-    statusEl.innerText = "⚠️ 정리 요청됨";
+window.reserve = function(id){
+  let m=machines.find(x=>x.id==id);
+  if(!m.reservations.includes(myRoom)){
+    m.reservations.push(myRoom);
+    save();
   }
 }
 
-setInterval(() => {
-  render("washer", null);
-  render("dryer", null);
-}, 1000);
+window.cancelReserve = function(id){
+  let m=machines.find(x=>x.id==id);
+  m.reservations = m.reservations.filter(r=>r!=myRoom);
+  save();
+}
+
+window.manualFinish = function(id){
+  let m=machines.find(x=>x.id==id);
+  m.status="finished";
+  save();
+}
+
+window.autoFinish = function(m){
+  m.status="finished";
+  save();
+}
+
+window.clearMachine = function(id){
+  let m=machines.find(x=>x.id==id);
+  m.status="available";
+  m.room=null;
+  m.endTime=null;
+  m.alert5=false;
+
+  if(m.reservations.length){
+    let next=m.reservations.shift();
+    if(next==myRoom) alert("📢 예약 차례입니다!");
+  }
+  save();
+}
+
+window.requestClean = function(id){
+  let m=machines.find(x=>x.id==id);
+  alert(`📢 ${m.room}호에 정리 요청 전송됨`);
+}
+
+setInterval(render,1000);
+render();
 </script>
 
 </body>
-</html> 
+</html>
